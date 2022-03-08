@@ -1,0 +1,250 @@
+---
+title: "Amal Kadri ACS Analysis"
+author: "Amal Kadri"
+date: "3/7/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+
+#Load Libraries
+library(tidyverse)
+library(mosaic)
+library(knitr)
+
+ACS <- read_csv("../Labor-Empirical-1/data/ACS_2019_Michigan.csv")
+```
+
+# Analysis of the ACS Labor data from Michigan for 2019
+```{r cleaning, include=FALSE}
+# Produce detailed summary statistics that describe the sample distributions of weekly
+# hours of work, annual hours of work, and hourly wages — separately for males and
+# females. Examine your data to make sure that the variables in your data set take on
+# meaningful values for all of the observations in your analysis samples. 
+
+# Filter out any unknown values for SEX, UHRSWORK, FTOTINC
+ACSPreClean = ACS%>%
+  filter(SEX == 1 | SEX == 2) %>%
+  filter(UHRSWORK != 00) %>%
+  filter(FTOTINC != 9999999) %>%
+  filter(WKSWORK2 != 0) %>%
+  filter(INCWAGE != 999999) %>%
+  filter(INCWAGE != 999998)
+```
+
+```{r dummies, include=FALSE}
+#age squared dummy variable
+ACSPreClean$AGESQ = (ACSPreClean$AGE)^2
+#dummy variables for Hispanic, Black, and Asian
+ACSPreClean$Hispanic <- ifelse(ACSPreClean$HISPAN == (1 | 2 | 3 | 4),1,0)
+ACSPreClean$Black <- ifelse(ACSPreClean$RACE == 2,1,0)
+ACSPreClean = ACSPreClean%>%
+  mutate(Asian = recode(RACE,
+                        "3"=1,
+                        "4"=1,
+                        "5"=1,
+                        .default = 0))
+#Married Dummy
+ACSPreClean = ACSPreClean%>%
+  mutate(Married = recode(MARST,
+                          "1"=1,
+                          "2"=1,
+                          .default = 0))
+#Education dummies
+#Dummy variables for each of the following educational attainment categories: (i) Completed less than 12 years of schooling; (ii) Completed exactly 12 years of schooling; (iii) Completed 1-2 years of college; (iv) Completed exactly 4 years of college; and (v) Completed 5+ years of college
+ACSPreClean = ACSPreClean%>%
+  mutate(Less12 = recode(EDUC,
+                          "01"=1,
+                          "02"=1,
+                          "03"=1,
+                          "04"=1,
+                          "05"=1,
+                          .default = 0))
+
+ACSPreClean = ACSPreClean%>%
+  mutate(Exact12 = recode(EDUC,
+                         "06"=1,
+                         .default = 0))
+
+ACSPreClean = ACSPreClean%>%
+  mutate(CollegeOneTwo = recode(EDUC,
+                          "07"=1,
+                          "08"=1,
+                          .default = 0))
+
+ACSPreClean = ACSPreClean%>%
+  mutate(CollegeFour = recode(EDUC,
+                          "10"=1,
+                          .default = 0))
+
+ACSPreClean = ACSPreClean%>%
+  mutate(CollegeFivePlus = recode(EDUC,
+                          "11"=1,
+                          .default = 0))
+
+#Occupation Dummies
+#Dummy variables for each of the 12 major occupation categories (i.e., “Management, Business, Financial Occupations”; “Computer, Engineering, and Science Occupations”; “Education, Legal, Community Service, Arts, and Media Occupations”; etc.)
+ACSPreClean$OCCint <- as.integer(ACSPreClean$OCC)
+
+ACSPreClean$ManBusFin = ifelse(10 <= ACSPreClean$OCCint & ACSPreClean$OCCint <= 960,1,0)
+ACSPreClean$CompEngSci = ifelse(1005 <= ACSPreClean$OCCint & ACSPreClean$OCCint <= 1980,1,0)
+ACSPreClean$EdLegComArt = ifelse(2001 <= ACSPreClean$OCCint & ACSPreClean$OCCint <= 2920,1,0)
+ACSPreClean$HealthTech = ifelse(3000 <= ACSPreClean$OCCint & ACSPreClean$OCCint <= 3550,1,0)
+ACSPreClean$Service = ifelse(3601 <= ACSPreClean$OCCint & ACSPreClean$OCCint <= 4655,1,0)
+#ACSPreClean$SalesOcc = 0
+ACSPreClean$SalesOffic = ifelse(4700 <= ACSPreClean$OCCint & ACSPreClean$OCCint <= 4965,1,0)
+ACSPreClean$OfficAdmin = ifelse(5000 <= ACSPreClean$OCCint & ACSPreClean$OCCint <= 5940,1,0)
+#ACSPreClean$NatConMaint = 0
+ACSPreClean$FarmFishFor = ifelse(6005 <= ACSPreClean$OCCint & ACSPreClean$OCCint <= 6130,1,0)
+ACSPreClean$ConstExtra = ifelse(6200 <= ACSPreClean$OCCint & ACSPreClean$OCCint <= 6950,1,0)
+ACSPreClean$InsMainRep = ifelse(7000 <= ACSPreClean$OCCint & ACSPreClean$OCCint <= 7640,1,0)
+#ACSPreClean$ProdTranMov = 0
+ACSPreClean$Production = ifelse(7700 <= ACSPreClean$OCCint & ACSPreClean$OCCint <= 8990,1,0)
+ACSPreClean$TranMoving = ifelse(9005 <= ACSPreClean$OCCint & ACSPreClean$OCCint <= 9920,1,0)
+#ACSPreClean$Military = ifelse(9800 <= ACSPreClean$OCCint & ACSPreClean$OCCint <= 9920,1,0)
+
+#Dummy for Public Sector Worker
+ACSPreClean$CLASSint <- as.integer(ACSPreClean$CLASSWKRD)
+ACSPreClean$PublicSec = ifelse(ACSPreClean$CLASSint >= 24 & ACSPreClean$CLASSint <= 28,1,0)
+
+#Weeks Worked Midpoints from WKSWORK2 intervals
+ACSPreClean = ACSPreClean%>%
+  mutate(weeksWorked = recode(WKSWORK2,
+                              "1"=7,
+                              "2"=20,
+                              "3"=33,
+                              "4"=43.5,
+                              "5"=48.5,
+                              "6"=51
+  ))
+
+#Dummy for Wage Worker Last Year
+#A dummy variable for “wage worker last year” that equals 1 if the individual worked 1 or more weeks last year and was not self-employed and was not an unpaid worker, and equals 0 otherwise
+ACSPreClean$WageWorker = ifelse(ACSPreClean$weeksWorked > 0 
+                                & ACSPreClean$CLASSWKR == 2,1,0)
+
+#Dummy for Annual Hours Worked
+#An “annual hours worked” variable, computed as usual hours worked per week multiplied by the midpoint value of the interval for the individual’s weeks worked last year
+ACSPreClean$AnnualHours = (ACSPreClean$weeksWorked * ACSPreClean$UHRSWORK)
+
+#Dummy for Nonlabor Income
+#A “nonlabor income” variable, calculated as total family income minus own wage income;
+ACSPreClean$Nonlabor = (ACSPreClean$FTOTINC - ACSPreClean$INCWAGE)
+
+
+#Dummy for Hourly Wage
+#An “hourly wage” variable, calculated as wage income last year divided by annual hours worked
+ACSPreClean$HourlyWage = (ACSPreClean$INCWAGE / ACSPreClean$AnnualHours)
+
+#storing pre-transformation data for later analysis
+WomenPreTransform = ACSPreClean %>% filter(SEX == 2) %>% filter(WageWorker == 1) %>%
+  filter(HourlyWage > 0)
+MenPreTransform = ACSPreClean %>% filter(SEX == 1) %>% filter(WageWorker == 1) %>%
+  filter(HourlyWage > 0)
+
+#Log(x+1) transformation on all Nonlabor values, where x is the smallest (most negative)
+#value of Nonlabor, so that all values are positive, for better log transforming.
+minNonlabor = (min(ACSPreClean$Nonlabor)*(-1) + 1)
+ACSPreClean$NonlaborAdj = (ACSPreClean$Nonlabor + minNonlabor)
+
+#The natural logs of annual hours worked, nonlabor income, and the hourly wage
+ACSPreClean$LogAnnHours = log(ACSPreClean$AnnualHours)
+ACSPreClean$LogNonlabor = log(ACSPreClean$NonlaborAdj)
+ACSPreClean$LogHourlyWage = log(ACSPreClean$HourlyWage) #has some -infs from 0 hourlywage
+
+ACSLabor =  ACSPreClean%>%
+  filter(WageWorker == 1) %>%
+  filter(HourlyWage > 0)
+
+ACSMen = ACSLabor %>% filter(SEX == 1)
+ACSWomen =  ACSLabor %>% filter(SEX == 2)
+```
+
+## Question A: Gender Summary
+```{r gender summary, echo=FALSE, message=FALSE, warning=FALSE, paged.print=TRUE}
+knitr::opts_chunk$set(echo = F)
+#Question A
+ACSGenderSummary = ACSPreClean%>%
+  group_by(SEX) %>%
+  summarise(meanHRS = mean(UHRSWORK), meanINC = mean(FTOTINC), meanWeeksWorked = 
+              mean(weeksWorked))
+ACSGenderSummary
+```
+
+## Question B: Models
+```{r basic labor models, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+knitr::opts_chunk$set(echo = F)
+#basic models just to explore trends
+model1 <- lm(data = ACSLabor, LogAnnHours ~ LogHourlyWage + LogNonlabor)
+summary(model1) #base regression
+
+model2 <- lm(data = ACSLabor, LogAnnHours ~ LogHourlyWage + LogNonlabor 
+             + Black + Hispanic + Asian)
+summary(model2) #with race regressors
+```
+
+### Men
+```{r full labor model men, echo=FALSE}
+#Full model with all wage/income, 
+knitr::opts_chunk$set(echo = F)
+model3 <- lm(data = ACSMen, LogAnnHours ~ LogHourlyWage + LogNonlabor 
+             + Black #significant race regressors
+             + Married #marriage
+             + AGE
+             + Exact12 + CollegeOneTwo + CollegeFour + CollegeFivePlus #ed variables
+             + ManBusFin + CompEngSci + EdLegComArt + HealthTech + Service + SalesOffic + OfficAdmin
+             + FarmFishFor + ConstExtra + InsMainRep + Production) #sector indicators
+summary(model3) #full model
+```
+### Women
+```{r full labor model women, echo=FALSE}
+knitr::opts_chunk$set(echo = T)
+model3 <- lm(data = ACSWomen, LogAnnHours ~ LogHourlyWage + LogNonlabor 
+             + Black #significant race regressors
+             + Married #marriage
+             + AGE
+             + Exact12 + CollegeOneTwo + CollegeFour + CollegeFivePlus #ed variables
+             + ManBusFin + CompEngSci + EdLegComArt + HealthTech + Service + SalesOffic + OfficAdmin
+             + FarmFishFor + ConstExtra + InsMainRep + Production) #sector indicators
+summary(model3) #full model
+```
+
+## Question C: Analysis
+Which estimated coefficient gives an estimate of the uncompensated wage elasticity of labor supply: $\eta_{w}^{u}$?
+* The Uncompensated Wage Elasticity of Labor Supply is the LogHourlyWage beta coefficient of the above labor models, $\beta_{men} = -0.0095352$ for men (insignificant), and $\beta_{women} = -0.0290507$ (significant) for women. It's strange that the Wage elasticity is negative, as this is a little counterintuitive when it comes to standard labor theory, but was a consistent result throughout many iterations of the model. Wage's effect on labor supply is subject to both substitution and income effects, so it's not too surprising the sign is slightly ambigious or even negative, though I would have initially expected to see a positive number. It seems to be that that what sector you work in and demographic factors have a stronger impact on your labor supply. The negative and significant labor supply for women potentially suggests that they might have an earnings target, a la Camerer et al. which might explain why they become disinclined to work as their wage income increases. But that is only speculation as there are many factors involved. They simply may have a weaker substitution effect towards labor for a variety of other reasons.
+
+Which estimated coefficient gives an estimate of the (nonlabor) income elasticity of labor supply: $\eta_{V}$?
+* The Nonlabor Income Elasticity is equal to the LogNonlabor Beta Coefficients: $\beta_{men} = -0.2220163$ and $\beta_{women} = -0.6050701$, which are both negative and significant. These signs do agree with the predictions of labor supply, as leisure is a normal good and therefore Hours Worked should at least weakly decrease as Income increases, implying a negative labor supply elasticity for non-labor income.
+
+Use your coefficient estimates and the mean sample values of wage income and “full income” to obtain estimates of compensated wage elasticity: $\eta_{w}^c$
+$$\eta_{w}^c =  \eta_{w}^{u} - \frac{Annual Wage Income}{Annual Full Income} * \eta_{V}
+= \eta_{w}^{u} - \frac{wH^*}{wT - V} * \eta_{V}$$ 
+
+```{r making mean variables, include=FALSE}
+meanMenHours = mean(ACSMen$AnnualHours)
+meanWomenHours = mean(ACSWomen$AnnualHours)
+meanMenV = mean(MenPreTransform$Nonlabor)
+meanWomenV = mean(WomenPreTransform$Nonlabor)
+meanMenWage = mean(ACSMen$HourlyWage)
+meanWomenWage = mean(ACSWomen$HourlyWage)
+meanMenEarnings = mean(ACSMen$INCWAGE)
+meanWomenEarnings = mean(ACSWomen$INCWAGE)
+```
+
+```{r calculate compensated wage elasticity, echo=TRUE}
+wageElasticityMen = (-0.0095352) - ((meanMenEarnings)/(meanMenWage*4000 + meanMenV)) *(-0.2220163) 
+wageElasticityWomen = (-0.0290507) - ((meanWomenEarnings)/(meanWomenWage*4000 + meanWomenV)) *(-0.6050701) 
+
+wageElasticityMen
+wageElasticityWomen
+```
+* Both predicted elasticities are fairly close to zero (though still somewhat significant in magnitude from an elasticity perspective), and changed signs from their respective uncompensated demands. Part of the difficulty in calculating these metrics is that the mean values of Nonlabor income in the data set were pretty high (`meanMenV` for men and `meanWomenV` for women), which despite my data cleaning and efforts to determine why I couldn't really figure out the reason for. Furthermore, there is a certain amount of measurement error that is amplified by having to construct the hourly wage from the data. The elasticities themselves seem like reasonable numbers in terms of magnitude though, and are significantly larger than their uncompensated counterparts.
+
+What are the major differences in your estimates for men versus women? Discuss some possible explanations for these differences. 
+* Women actualy seem to have larger values for their coefficients across the board, which indicates that, among the variables selected, more of the variability of women's wages could be explained than men. The significant exception to this rule were the coefficients for **Black** and **Married**, which are much higher in magnitude for men than women (these variables are actually not significant for women). It would appear that Race and Marital Status have a noticeable effect on men's labor supply (with married men working more on average than unmarried men and Black men working less than Non-Black men).
+
+Discuss why your estimated elasticities might be biased/inconsistent. In particular, discuss how measurement error, omitted variables, and/or sample selection may influence your estimates.
+* One of the obvious biases here is *division bias*, which would deflate our estimate of **HourlyWage** since it's derived from **AnnualHours** (which is itself a composite of "Usual Hours Worked per Week" and an approximation of "Weeks Worked Last Year"). This trail of composites amplifies any measurement error across the entire data set. Furthermore, we had to select for only wage workers, and only those with complete observations for all the relevant variables. This bias towards completeness means the data is naturally more geared towards individuals who are well recorded in the system. In Michigan, this might not be too significant of a problem, but in other areas such as California or Texas, this could introduce a large bias into the dataset.
+
+
